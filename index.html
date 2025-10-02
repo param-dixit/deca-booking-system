@@ -1,76 +1,154 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Booking System</title>
+  <meta charset="utf-8">
+  <title>Booking Calendar</title>
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 40px; }
-    #calendar { max-width: 800px; margin: auto; }
-    #form { margin-top: 20px; text-align: center; }
-    input, select { margin: 5px; padding: 8px; }
-    button { padding: 8px 15px; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; }
+    #calendar { max-width: 900px; margin: 0 auto; }
+    #form { max-width: 600px; margin: 20px auto; text-align: center; }
+    input, select, textarea { padding: 8px; margin: 6px; width: 90%; max-width: 380px; box-sizing: border-box; }
+    button { padding: 8px 16px; }
   </style>
 </head>
 <body>
-
-  <h1>Book a Slot</h1>
+  <h1 style="text-align:center">Booking Calendar</h1>
   <div id="calendar"></div>
 
   <div id="form">
-    <h2>Booking Form</h2>
-    <input type="text" id="name" placeholder="Your Name" required><br>
-    <input type="email" id="email" placeholder="Your Email" required><br>
-    <input type="text" id="date" placeholder="Date (YYYY-MM-DD)" readonly><br>
-    <input type="text" id="time" placeholder="Time (e.g. 14:00)" required><br>
-    <textarea id="notes" placeholder="Notes"></textarea><br>
-    <button onclick="submitBooking()">Submit Booking</button>
+    <h2>Book a slot</h2>
+    <form id="bookingForm" method="POST" action="YOUR_APPS_SCRIPT_WEB_APP_URL" target="hidden_iframe">
+      <input name="name" id="name" placeholder="Your name" required><br>
+      <input name="email" id="email" type="email" placeholder="Your email" required><br>
+      <input name="date" id="date" placeholder="Date (click a day)" readonly required><br>
+      <select name="time" id="time" required>
+        <!-- times will be injected -->
+      </select><br>
+      <textarea name="notes" id="notes" placeholder="Notes (optional)"></textarea><br>
+      <button type="submit">Submit Booking</button>
+    </form>
+    <p id="status" style="color:green"></p>
   </div>
 
+  <!-- hidden iframe for form posts -->
+  <iframe name="hidden_iframe" style="display:none;"></iframe>
+
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbytQE1uHX0MCCE-3mOrm-PlErCdfQX2icyO_IU2gsJMkKqvrPih-7d5VsaniAQWYM0/exec"; // <--- replace with your URL
+    // CONFIG
+    const API_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL'; // replace
+    // Standard daily timeslots (adjust as needed)
+    const AVAILABLE_TIMES = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00'];
 
-    // Load booked slots
-    let bookedSlots = {};
-    fetch(API_URL)
-      .then(res => res.json())
-      .then(data => {
-        bookedSlots = data.booked || {};
-        renderCalendar();
-      });
+    // runtime state
+    let bookedSlots = {}; // keys: "YYYY-MM-DD_HH:MM" -> booking info
+    let calendar;
 
-    function renderCalendar() {
+    // JSONP loader for bookings
+    function loadBookings() {
+      // remove previous JSONP script if present
+      const old = document.getElementById('jsonpBookings');
+      if (old) old.remove();
+
+      // callback function that the server will call
+      window.handleSlots = function(data) {
+        bookedSlots = data && data.booked ? data.booked : {};
+        refreshCalendarAndTimes();
+      };
+
+      const script = document.createElement('script');
+      script.id = 'jsonpBookings';
+      script.src = API_URL + '?callback=handleSlots&nocache=' + Date.now();
+      document.head.appendChild(script);
+    }
+
+    // Initialize FullCalendar
+    function initCalendar() {
       const calendarEl = document.getElementById('calendar');
-      const calendar = new FullCalendar.Calendar(calendarEl, {
+      calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
-        selectable: true,
         dateClick: function(info) {
-          const date = info.dateStr;
-          document.getElementById('date').value = date;
+          // fill the date input
+          document.getElementById('date').value = info.dateStr;
+          populateTimesForDate(info.dateStr);
+          // scroll to form
+          window.scrollTo({ top: document.getElementById('form').offsetTop - 20, behavior: 'smooth' });
         }
       });
       calendar.render();
+      loadBookings();
     }
 
-    function submitBooking() {
-      const name = document.getElementById('name').value;
-      const email = document.getElementById('email').value;
-      const date = document.getElementById('date').value;
-      const time = document.getElementById('time').value;
-      const notes = document.getElementById('notes').value;
+    // Rebuild events from bookedSlots, and refresh calendar display
+    function refreshCalendarAndTimes() {
+      // remove existing events and add new ones
+      calendar.getEvents().forEach(ev => ev.remove());
+      for (const key in bookedSlots) {
+        const parts = key.split('_');
+        if (parts.length !== 2) continue;
+        const date = parts[0];
+        const time = parts[1];
+        // create a datetime string for FullCalendar
+        const dt = date + 'T' + time + ':00';
+        calendar.addEvent({
+          title: 'Booked',
+          start: dt,
+          allDay: false,
+          display: 'background'
+        });
+      }
+      // refresh time dropdown for currently selected date (if any)
+      const curDate = document.getElementById('date').value;
+      if (curDate) populateTimesForDate(curDate);
+    }
 
-      fetch(API_URL, {
-        method: "POST",
-        body: JSON.stringify({ name, email, date, time, notes })
-      })
-      .then(res => res.json())
-      .then(result => {
-        alert(result.message);
-        if (result.success) location.reload(); // refresh calendar
+    // Populate time <select> disabling already-booked times
+    function populateTimesForDate(dateStr) {
+      const sel = document.getElementById('time');
+      sel.innerHTML = '';
+      AVAILABLE_TIMES.forEach(t => {
+        const key = `${dateStr}_${t}`;
+        const option = document.createElement('option');
+        option.value = t;
+        option.textContent = bookedSlots[key] ? `${t} — UNAVAILABLE` : `${t} — available`;
+        option.disabled = !!bookedSlots[key];
+        sel.appendChild(option);
       });
     }
-  </script>
 
+    // Intercept form submit to do a quick double-book check using current bookedSlots
+    document.getElementById('bookingForm').addEventListener('submit', function(e) {
+      const date = document.getElementById('date').value;
+      const time = document.getElementById('time').value;
+      const key = `${date}_${time}`;
+      if (bookedSlots[key]) {
+        e.preventDefault();
+        alert('That slot is already taken. Please choose another one.');
+        populateTimesForDate(date);
+        return false;
+      }
+      // show submitting message
+      document.getElementById('status').textContent = 'Submitting...';
+      // allow form to submit to hidden iframe; the Apps Script response will postMessage back
+    });
+
+    // Listen for messages from the Apps Script response (the iframe content)
+    window.addEventListener('message', function(ev) {
+      if (!ev.data) return;
+      if (ev.data.message) {
+        document.getElementById('status').textContent = ev.data.message;
+      }
+      // refresh bookings if success
+      if (ev.data.success) {
+        setTimeout(() => {
+          loadBookings(); // reload the JSONP to get the latest bookings
+        }, 500); // small delay to ensure sheet has been updated
+      }
+    }, false);
+
+    // boot
+    initCalendar();
+  </script>
 </body>
 </html>
