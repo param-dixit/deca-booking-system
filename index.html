@@ -1,129 +1,72 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <title>Booking System</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center py-10 px-4">
-
-  <h1 class="text-3xl font-bold mb-6 text-gray-800">📅 Book a Slot</h1>
-
-  <!-- Slot List -->
-  <div id="slots" class="w-full max-w-2xl bg-white shadow-lg rounded-xl p-6 mb-6">
-    <h2 class="text-xl font-semibold mb-4">Available Slots</h2>
-    <div id="slotList" class="space-y-2"></div>
-  </div>
-
-  <!-- Booking Form -->
-  <div id="form" class="w-full max-w-lg bg-white shadow-lg rounded-xl p-6">
-    <h2 class="text-xl font-semibold mb-4">Booking Form</h2>
-    <form id="bookingForm" class="space-y-4">
-      <input type="text" id="name" placeholder="Your Name" required
-        class="w-full border rounded-lg px-3 py-2">
-      <input type="email" id="email" placeholder="Your Email" required
-        class="w-full border rounded-lg px-3 py-2">
-      <input type="text" id="date" readonly placeholder="Date"
-        class="w-full border rounded-lg px-3 py-2 bg-gray-100 cursor-not-allowed">
-      <input type="text" id="time" readonly placeholder="Time"
-        class="w-full border rounded-lg px-3 py-2 bg-gray-100 cursor-not-allowed">
-      <textarea id="notes" placeholder="Notes (optional)"
-        class="w-full border rounded-lg px-3 py-2"></textarea>
-      <button type="submit"
-        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg">
-        Confirm Booking
-      </button>
-    </form>
-    <p id="status" class="mt-4 text-center font-medium"></p>
-  </div>
+<body class="bg-gray-100 text-gray-900 min-h-screen flex flex-col items-center p-6">
+  <h1 class="text-3xl font-bold mb-6">📅 Available Slots</h1>
+  
+  <div id="slots" class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 w-full max-w-5xl"></div>
 
   <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbytQE1uHX0MCCE-3mOrm-PlErCdfQX2icyO_IU2gsJMkKqvrPih-7d5VsaniAQWYM0/exec";
-    let selectedDate = "";
-    let selectedTime = "";
 
-    // Fetch slots
-    function loadSlots() {
-      fetch(API_URL)
-        .then(res => res.json())
-        .then(data => {
-          const slotList = document.getElementById("slotList");
-          slotList.innerHTML = "";
+    async function loadSlots() {
+      try {
+        const res = await fetch(API_URL);
+        const data = await res.json();
+        const slotsDiv = document.getElementById("slots");
+        slotsDiv.innerHTML = "";
 
-          data.slots.forEach(slot => {
-            const slotBtn = document.createElement("button");
-            slotBtn.className = "w-full text-left px-4 py-2 rounded-lg border " +
-                                (slot.Status === "booked"
-                                  ? "bg-red-100 text-red-600 cursor-not-allowed"
-                                  : "bg-green-100 text-green-700 hover:bg-green-200");
-            slotBtn.textContent = `${slot.Date} @ ${slot.Time} - ${slot.Status}`;
-            slotBtn.disabled = slot.Status === "booked";
+        data.slots.forEach(slot => {
+          const card = document.createElement("div");
+          card.className = "bg-white shadow-md rounded-2xl p-4 flex flex-col items-start justify-between";
 
-            if (slot.Status === "free") {
-              slotBtn.onclick = () => {
-                document.getElementById("date").value = slot.Date;
-                document.getElementById("time").value = slot.Time;
-                selectedDate = slot.Date;
-                selectedTime = slot.Time;
-              };
-            }
-            slotList.appendChild(slotBtn);
-          });
-        })
-        .catch(err => {
-          console.error("Error loading slots:", err);
-          document.getElementById("slotList").textContent = "⚠️ Could not load slots.";
+          card.innerHTML = `
+            <h2 class="text-xl font-semibold">${slot.Date || "Unknown Date"}</h2>
+            <p class="text-gray-600 text-lg">🕑 ${slot.Time || "Unknown Time"}</p>
+            <p class="mt-2">
+              Status: <span class="font-bold ${slot.Status === 'free' ? 'text-green-600' : 'text-red-600'}">
+                ${slot.Status}
+              </span>
+            </p>
+            ${slot.Status === "free" ? `
+              <button class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                onclick="bookSlot('${slot.Date}','${slot.Time}')">
+                Book Now
+              </button>` : ""}
+          `;
+
+          slotsDiv.appendChild(card);
         });
+      } catch (err) {
+        console.error(err);
+        document.getElementById("slots").innerHTML = `<p class="text-red-600">⚠️ Could not load slots</p>`;
+      }
     }
 
-    // Handle booking
-    document.getElementById("bookingForm").addEventListener("submit", function(e) {
-      e.preventDefault();
+    async function bookSlot(Date, Time) {
+      const name = prompt("Enter your name:");
+      const email = prompt("Enter your email:");
 
-      const name = document.getElementById("name").value;
-      const email = document.getElementById("email").value;
-      const notes = document.getElementById("notes").value;
+      if (!name || !email) return alert("Booking cancelled.");
 
-      if (!selectedDate || !selectedTime) {
-        alert("Please select a slot first.");
-        return;
-      }
-
-      fetch(API_URL, {
+      const res = await fetch(API_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          name,
-          email,
-          date: selectedDate,
-          time: selectedTime,
-          notes
-        })
-      })
-      .then(res => res.json())
-      .then(result => {
-        const statusEl = document.getElementById("status");
-        statusEl.textContent = result.message;
-        statusEl.className = "mt-4 text-center font-medium " +
-          (result.success ? "text-green-600" : "text-red-600");
-
-        if (result.success) {
-          loadSlots(); // refresh list after booking
-          document.getElementById("bookingForm").reset();
-          document.getElementById("date").value = "";
-          document.getElementById("time").value = "";
-          selectedDate = "";
-          selectedTime = "";
-        }
-      })
-      .catch(err => {
-        console.error("Booking error:", err);
-        document.getElementById("status").textContent = "⚠️ Error submitting booking.";
-        document.getElementById("status").className = "mt-4 text-center font-medium text-red-600";
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ Date, Time, name, email })
       });
-    });
+
+      const result = await res.json();
+      if (result.success) {
+        alert("✅ Slot booked successfully!");
+        loadSlots();
+      } else {
+        alert("❌ " + result.message);
+      }
+    }
 
     loadSlots();
   </script>
