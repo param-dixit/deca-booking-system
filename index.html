@@ -2,155 +2,98 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Booking Calendar</title>
-
-  <!-- TailwindCSS CDN -->
+  <title>Booking System</title>
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- FullCalendar -->
-  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
-
-  <style>
-    body { background-color: #f9fafb; }
-    .fc-daygrid-event { background-color: #f87171 !important; border: none !important; }
-    .fc-daygrid-event-dot { display: none !important; }
-  </style>
 </head>
-<body class="min-h-screen flex flex-col items-center px-4 py-8">
+<body class="bg-gray-100 min-h-screen flex flex-col items-center py-10 px-4">
 
-  <!-- Header -->
-  <header class="text-center mb-8">
-    <h1 class="text-3xl font-bold text-gray-800">📅 Book a Slot</h1>
-    <p class="text-gray-500">Choose a date and time that works for you.</p>
-  </header>
+  <h1 class="text-3xl font-bold mb-6 text-gray-800">📅 Book a Slot</h1>
 
-  <!-- Calendar -->
-  <div id="calendar" class="bg-white shadow-lg rounded-2xl p-4 w-full max-w-4xl"></div>
-
-  <!-- Booking Form -->
-  <div id="form" class="bg-white shadow-lg rounded-2xl p-6 mt-8 w-full max-w-lg">
-    <h2 class="text-xl font-semibold mb-4 text-gray-800 text-center">Booking Form</h2>
-    <form id="bookingForm" method="POST" action="YOUR_APPS_SCRIPT_WEB_APP_URL" target="hidden_iframe" class="space-y-4">
-      <input name="name" id="name" placeholder="Your Name" required
-             class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-
-      <input name="email" id="email" type="email" placeholder="Your Email" required
-             class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-
-      <input name="date" id="date" placeholder="Date (click on calendar)" readonly required
-             class="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-100 cursor-not-allowed">
-
-      <select name="time" id="time" required
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-      </select>
-
-      <textarea name="notes" id="notes" placeholder="Notes (optional)"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
-
-      <button type="submit"
-              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg shadow-md transition">
-        Submit Booking
-      </button>
-    </form>
-    <p id="status" class="mt-4 text-center text-sm font-medium"></p>
+  <!-- Slot List -->
+  <div id="slots" class="w-full max-w-2xl bg-white shadow-lg rounded-xl p-6 mb-6">
+    <h2 class="text-xl font-semibold mb-4">Available Slots</h2>
+    <div id="slotList" class="space-y-2"></div>
   </div>
 
-  <!-- hidden iframe -->
-  <iframe name="hidden_iframe" style="display:none;"></iframe>
+  <!-- Booking Form -->
+  <div id="form" class="w-full max-w-lg bg-white shadow-lg rounded-xl p-6">
+    <h2 class="text-xl font-semibold mb-4">Booking Form</h2>
+    <form id="bookingForm" class="space-y-4">
+      <input type="text" id="name" placeholder="Your Name" required
+        class="w-full border rounded-lg px-3 py-2">
+      <input type="email" id="email" placeholder="Your Email" required
+        class="w-full border rounded-lg px-3 py-2">
+      <input type="text" id="date" readonly placeholder="Date"
+        class="w-full border rounded-lg px-3 py-2 bg-gray-100 cursor-not-allowed">
+      <input type="text" id="time" readonly placeholder="Time"
+        class="w-full border rounded-lg px-3 py-2 bg-gray-100 cursor-not-allowed">
+      <textarea id="notes" placeholder="Notes (optional)"
+        class="w-full border rounded-lg px-3 py-2"></textarea>
+      <button type="submit"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg">
+        Confirm Booking
+      </button>
+    </form>
+    <p id="status" class="mt-4 text-center font-medium"></p>
+  </div>
 
   <script>
-    const API_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL'; // replace with your URL
-    const AVAILABLE_TIMES = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00'];
-    let bookedSlots = {};
-    let calendar;
+    const API_URL = "YOUR_APPS_SCRIPT_WEB_APP_URL";
+    let selectedDate = "";
+    let selectedTime = "";
 
-    // JSONP loader
-    function loadBookings() {
-      const old = document.getElementById('jsonpBookings');
-      if (old) old.remove();
-      window.handleSlots = function(data) {
-        bookedSlots = data && data.booked ? data.booked : {};
-        refreshCalendarAndTimes();
-      };
-      const script = document.createElement('script');
-      script.id = 'jsonpBookings';
-      script.src = API_URL + '?callback=handleSlots&nocache=' + Date.now();
-      document.head.appendChild(script);
-    }
+    // Fetch slots
+    function loadSlots() {
+      fetch(API_URL)
+        .then(res => res.json())
+        .then(data => {
+          const slotList = document.getElementById("slotList");
+          slotList.innerHTML = "";
 
-    function initCalendar() {
-      const calendarEl = document.getElementById('calendar');
-      calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',
-        selectable: true,
-        dateClick: function(info) {
-          document.getElementById('date').value = info.dateStr;
-          populateTimesForDate(info.dateStr);
-          document.getElementById('form').scrollIntoView({ behavior: 'smooth' });
-        }
-      });
-      calendar.render();
-      loadBookings();
-    }
+          data.slots.forEach(slot => {
+            const slotBtn = document.createElement("button");
+            slotBtn.className = "w-full text-left px-4 py-2 rounded-lg border " +
+                                (slot.Status === "booked"
+                                  ? "bg-red-100 text-red-600 cursor-not-allowed"
+                                  : "bg-green-100 text-green-700 hover:bg-green-200");
+            slotBtn.textContent = `${slot.Date} @ ${slot.Time} - ${slot.Status}`;
+            slotBtn.disabled = slot.Status === "booked";
 
-    function refreshCalendarAndTimes() {
-      calendar.getEvents().forEach(ev => ev.remove());
-      for (const key in bookedSlots) {
-        const [date, time] = key.split('_');
-        if (!date || !time) continue;
-        const dt = date + 'T' + time + ':00';
-        calendar.addEvent({
-          title: 'Booked',
-          start: dt,
-          allDay: false,
-          display: 'background'
+            if (slot.Status === "free") {
+              slotBtn.onclick = () => {
+                document.getElementById("date").value = slot.Date;
+                document.getElementById("time").value = slot.Time;
+                selectedDate = slot.Date;
+                selectedTime = slot.Time;
+              };
+            }
+            slotList.appendChild(slotBtn);
+          });
         });
-      }
-      const curDate = document.getElementById('date').value;
-      if (curDate) populateTimesForDate(curDate);
     }
 
-    function populateTimesForDate(dateStr) {
-      const sel = document.getElementById('time');
-      sel.innerHTML = '';
-      AVAILABLE_TIMES.forEach(t => {
-        const key = `${dateStr}_${t}`;
-        const option = document.createElement('option');
-        option.value = t;
-        option.textContent = bookedSlots[key] ? `${t} — Unavailable` : `${t} — Available`;
-        option.disabled = !!bookedSlots[key];
-        sel.appendChild(option);
+    // Handle booking
+    document.getElementById("bookingForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const name = document.getElementById("name").value;
+      const email = document.getElementById("email").value;
+      const notes = document.getElementById("notes").value;
+
+      fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ name, email, date: selectedDate, time: selectedTime, notes })
+      })
+      .then(res => res.json())
+      .then(result => {
+        const statusEl = document.getElementById("status");
+        statusEl.textContent = result.message;
+        statusEl.className = "mt-4 text-center font-medium " +
+          (result.success ? "text-green-600" : "text-red-600");
+        if (result.success) loadSlots(); // refresh slot list
       });
-    }
-
-    document.getElementById('bookingForm').addEventListener('submit', function(e) {
-      const date = document.getElementById('date').value;
-      const time = document.getElementById('time').value;
-      if (bookedSlots[`${date}_${time}`]) {
-        e.preventDefault();
-        document.getElementById('status').textContent = '❌ That slot is already taken.';
-        document.getElementById('status').className = "mt-4 text-center text-red-600 font-medium";
-        return false;
-      }
-      document.getElementById('status').textContent = '⏳ Submitting...';
-      document.getElementById('status').className = "mt-4 text-center text-blue-600 font-medium";
     });
 
-    window.addEventListener('message', function(ev) {
-      if (!ev.data) return;
-      const statusEl = document.getElementById('status');
-      if (ev.data.success) {
-        statusEl.textContent = '✅ ' + ev.data.message;
-        statusEl.className = "mt-4 text-center text-green-600 font-medium";
-        setTimeout(loadBookings, 800);
-      } else {
-        statusEl.textContent = '❌ ' + ev.data.message;
-        statusEl.className = "mt-4 text-center text-red-600 font-medium";
-      }
-    });
-
-    initCalendar();
+    loadSlots();
   </script>
 </body>
 </html>
